@@ -4,13 +4,13 @@ Shader "Custom/Water"
     {
         _MainTex ("Texture", 2D) = "white" {}
         _BaseColor("Base Color", color) = (0,0.7310064,0.8862745,1)
-        _Smoothness("Smoothness", Range(0,1)) = 0.6
-        _Opacity("Opacity", Range(0,1)) = 0.98
-        _Metallic("Metallic", Range(0,1)) = 1
+        _Smoothness("Smoothness", Range(0,1)) = 0.9
+        _Metallic("Metallic", Range(0,1)) = 0
     }
     SubShader
     {
         Tags { 
+            "LightMode"="UniversalForward"
             "RenderType"="Opaque" 
             "RenderPipeline" = "UniversalRenderPipeline" 
             "Queue" = "Transparent"
@@ -21,6 +21,7 @@ Shader "Custom/Water"
         {
             Blend SrcAlpha OneMinusSrcAlpha
             ZWrite On
+            Cull Off
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -28,11 +29,15 @@ Shader "Custom/Water"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
-
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl"
+            
             #define PI 3.14159265358979323846  
 
             float _initialFrequency, _initialSpeed, _waterDepth, _dragMulti;
 			int _interationsWaves, _iterationsNormal;
+            
+            float4 _BaseColor, _EmissionColor, _SpecColor;
+            float _Smoothness, _Metallic, _Opacity, _Emission, _Cutoff;
 
 			struct VertexData {
 				float4 vertex : POSITION;
@@ -47,7 +52,6 @@ Shader "Custom/Water"
                 float3 positionWS : TEXCOORD1;
                 float3 normalWS : TEXCOORD2;
                 float3 viewDir : TEXCOORD3;
-                DECLARE_LIGHTMAP_OR_SH(lightmapUV, vertexSH, 4);
             };
 
 			float2 Wave(float3 v, float2 d, float frequency, float timeshift) {
@@ -111,11 +115,18 @@ Shader "Custom/Water"
 				);
 			}
 
-            sampler2D _MainTex;
-            float4 _MainTex_ST;
-
-            float4 _BaseColor;
-            float _Smoothness, _Metallic, _Opacity;
+            half SampleOcclusion(float2 uv) {
+                #ifdef _OCCLUSIONMAP
+                #if defined(SHADER_API_GLES)
+                    return SAMPLE_TEXTURE2D(_OcclusionMap, sampler_OcclusionMap, uv).g;
+                #else
+                    half occ = SAMPLE_TEXTURE2D(_OcclusionMap, sampler_OcclusionMap, uv).g;
+                    return LerpWhiteTo(occ, _OcclusionStrength);
+                #endif
+                #else
+                    return 1.0;
+                #endif
+            }
 
             v2f vert (VertexData v)
             {
@@ -136,20 +147,22 @@ Shader "Custom/Water"
             {
                 InputData inputdata = (InputData)0;
                 inputdata.positionWS = i.positionWS;
-                inputdata.normalWS = i.normalWS;
-                inputdata.viewDirectionWS = i.viewDir;
+                inputdata.normalWS = NormalizeNormalPerPixel(i.normalWS);
+	            inputdata.viewDirectionWS = SafeNormalize(GetWorldSpaceNormalizeViewDir(i.positionWS));
+                inputdata.shadowCoord =  TransformWorldToShadowCoord(i.positionWS);
+                
+                SurfaceData surfacedata = (SurfaceData)0;
 
-                SurfaceData surfacedata;
-                surfacedata.albedo = _BaseColor;
-                surfacedata.specular = 0;
+                half4 albedoAlpha = SampleAlbedoAlpha(i.uv, TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap));
+                surfacedata.alpha = Alpha(albedoAlpha.a, _BaseColor, _Cutoff);
+	            surfacedata.albedo =  _BaseColor.rgb;
+
+                surfacedata.normalTS = SampleNormal(i.uv, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap));
+                surfacedata.emission = SampleEmission(i.uv, _EmissionColor.rgb, TEXTURE2D_ARGS(_EmissionMap, sampler_EmissionMap));
+                surfacedata.occlusion = SampleOcclusion(i.uv);
+
                 surfacedata.metallic = _Metallic;
                 surfacedata.smoothness = _Smoothness;
-                surfacedata.normalTS = 0;
-                surfacedata.emission = 0;
-                surfacedata.occlusion = 0;
-                surfacedata.alpha = _Opacity;
-                surfacedata.clearCoatMask = 1;
-                surfacedata.clearCoatSmoothness = 1;
 
                 return UniversalFragmentPBR(inputdata, surfacedata);
             }

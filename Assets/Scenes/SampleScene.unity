@@ -640,8 +640,8 @@ MonoBehaviour:
   height: 7
   initialFrequency: 0.5
   initialSpeed: 1
-  waterDepth: 0.6
-  interationsWaves: 12
+  waterDepth: 1
+  interationsWaves: 15
   iterationsNormal: 40
   dragMulti: 0.45
   waterMaterial: {fileID: 0}
