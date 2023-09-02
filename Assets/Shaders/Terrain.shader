@@ -10,10 +10,9 @@ Shader "Custom/Terrain"
     SubShader
     {
         Tags { "RenderType"="Opaque" "RenderPipeline" = "UniversalRenderPipeline" }
-        LOD 100
-
         Pass
         {
+            ZWrite On
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag

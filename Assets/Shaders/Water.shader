@@ -6,21 +6,24 @@ Shader "Custom/Water"
         _BaseColor("Base Color", color) = (0,0.7310064,0.8862745,1)
         _Smoothness("Smoothness", Range(0,1)) = 0.9
         _Metallic("Metallic", Range(0,1)) = 0
+        _Opacity("Opacity", Range(0,1)) = 0.65
+        _DepthGradientShallow("Depth Gradient Shallow", Color) = (0.325, 0.807, 0.971, 0.725)
+        _DepthGradientDeep("Depth Gradient Deep", Color) = (0.086, 0.407, 1, 0.749)
+        _DepthMaxDistance("Depth Maximum Distance", Float) = 5
+        _FoamDistance("Foam Distance", Float) = 0.6
     }
     SubShader
     {
         Tags { 
             "LightMode"="UniversalForward"
-            "RenderType"="Opaque" 
             "RenderPipeline" = "UniversalRenderPipeline" 
             "Queue" = "Transparent"
         }
         LOD 100
-
         Pass
         {
             Blend SrcAlpha OneMinusSrcAlpha
-            ZWrite On
+            ZWrite Off
             Cull Off
             HLSLPROGRAM
             #pragma vertex vert
@@ -30,14 +33,18 @@ Shader "Custom/Water"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/SurfaceInput.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareDepthTexture.hlsl"
             
             #define PI 3.14159265358979323846  
 
             float _initialFrequency, _initialSpeed, _waterDepth, _dragMulti;
 			int _interationsWaves, _iterationsNormal;
             
-            float4 _BaseColor, _EmissionColor, _SpecColor;
-            float _Smoothness, _Metallic, _Opacity, _Emission, _Cutoff;
+            float4 _BaseColor, _EmissionColor;
+            float _Smoothness, _Metallic, _Opacity;
+
+            float4 _DepthGradientDeep, _DepthGradientShallow;
+            Float _DepthMaxDistance, _FoamDistance;
 
 			struct VertexData {
 				float4 vertex : POSITION;
@@ -47,11 +54,11 @@ Shader "Custom/Water"
 
             struct v2f
             {
-                float4 vertex : SV_POSITION;
                 float2 uv : TEXCOORD0;
                 float3 positionWS : TEXCOORD1;
-                float3 normalWS : TEXCOORD2;
-                float3 viewDir : TEXCOORD3;
+                float3 normalWS : TEXCOORD5;
+                float4 screenPos : TEXCOORD3; 
+                float4 vertex : SV_POSITION;
             };
 
 			float2 Wave(float3 v, float2 d, float frequency, float timeshift) {
@@ -97,12 +104,6 @@ Shader "Custom/Water"
 				return sumOfValues / sumOfWeights;
 			}
 
-            //This is a replacement for the old 'UnityObjectToClipPos()'
-            float4 ObjectToClipPos (float3 pos)
-            {
-                return mul (UNITY_MATRIX_VP, mul (UNITY_MATRIX_M, float4 (pos,1)));
-            }
-
 			float3 normal(float3 pos, float e, float depth) {
 				float3 ex = float3(e, 0, 0);
 				float H = getWaves(pos, _interationsWaves) * depth;
@@ -131,20 +132,34 @@ Shader "Custom/Water"
             v2f vert (VertexData v)
             {
                 v2f o;
-
 				o.positionWS = mul(unity_ObjectToWorld, v.vertex);
 				
 				float h = getWaves(o.positionWS, _interationsWaves) * _waterDepth - _waterDepth;
-				o.vertex = ObjectToClipPos(v.vertex + float4(0.0f, h, 0.0f, 0.0f));
+				o.vertex = TransformWorldToHClip(v.vertex + float4(0.0f, h, 0.0f, 0.0f));
 
 				float3 N = normal(o.positionWS, 0.01, _waterDepth);
 				o.normalWS = TransformObjectToWorldNormal(float3(-N.x, 1.0f, -N.y));
 
+                float3 positionWS = TransformObjectToWorld(v.vertex.xyz);
+                o.screenPos = ComputeScreenPos(o.vertex); 
+
 				return o;
             }
 
+
+
             half4 frag (v2f i) : SV_Target
             {
+                float existingDepth01 = SampleSceneDepth(i.screenPos.xy / i.screenPos.w);
+                float existingDepthLinear = LinearEyeDepth(existingDepth01, _ZBufferParams);
+
+                float depthDifference = existingDepthLinear - i.screenPos.w;
+                float waterDepthDifference01 = saturate(depthDifference / _DepthMaxDistance);
+                float4 waterColor = lerp(_DepthGradientShallow, _DepthGradientDeep, waterDepthDifference01);
+
+                float foamDepthDifference01 = saturate(depthDifference / _FoamDistance);
+                float4 foamColor = lerp(float4(1,1,1,1), float4(0,0,0,0), foamDepthDifference01);
+
                 InputData inputdata = (InputData)0;
                 inputdata.positionWS = i.positionWS;
                 inputdata.normalWS = NormalizeNormalPerPixel(i.normalWS);
@@ -154,8 +169,7 @@ Shader "Custom/Water"
                 SurfaceData surfacedata = (SurfaceData)0;
 
                 half4 albedoAlpha = SampleAlbedoAlpha(i.uv, TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap));
-                surfacedata.alpha = Alpha(albedoAlpha.a, _BaseColor, _Cutoff);
-	            surfacedata.albedo =  _BaseColor.rgb;
+	            surfacedata.albedo =  _BaseColor.rgb * 0.5 + waterColor + foamColor;
 
                 surfacedata.normalTS = SampleNormal(i.uv, TEXTURE2D_ARGS(_BumpMap, sampler_BumpMap));
                 surfacedata.emission = SampleEmission(i.uv, _EmissionColor.rgb, TEXTURE2D_ARGS(_EmissionMap, sampler_EmissionMap));
@@ -163,6 +177,8 @@ Shader "Custom/Water"
 
                 surfacedata.metallic = _Metallic;
                 surfacedata.smoothness = _Smoothness;
+
+                surfacedata.alpha = _Opacity;
 
                 return UniversalFragmentPBR(inputdata, surfacedata);
             }

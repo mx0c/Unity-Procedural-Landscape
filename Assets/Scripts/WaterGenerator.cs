@@ -15,7 +15,7 @@ public class WaterGenerator : MonoBehaviour
     public int interationsWaves = 20;
 	public int iterationsNormal = 40;
     public float dragMulti = 0.28f;
-    public Material waterMaterial; 
+    public Material waterMaterial;
 
     Mesh mesh;
     Vector3[] verts;
