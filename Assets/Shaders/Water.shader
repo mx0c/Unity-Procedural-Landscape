@@ -24,7 +24,6 @@ Shader "Custom/Water"
         {
             Blend SrcAlpha OneMinusSrcAlpha
             ZWrite Off
-            Cull Off
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag

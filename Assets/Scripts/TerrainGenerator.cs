@@ -13,8 +13,9 @@ public class MeshGeneratorScript : MonoBehaviour
     public int erosionIterations = 10000;
     public bool useErosion = true;
     public bool useGPUHeightMapGen = true;
-    //public Material material;
     public Shader terrainShader;
+    public Shader grassShader;
+    public Material grassMaterial;
     public Material terrainMaterial;
     public Gradient gradient;
 
@@ -149,8 +150,12 @@ public class MeshGeneratorScript : MonoBehaviour
 
     public void AddMaterials() {
         if(terrainShader != null){
-            terrainMaterial = new Material(terrainShader);
-            meshRenderer.sharedMaterials = AddMaterial(meshRenderer.sharedMaterials, terrainMaterial);
+            this.terrainMaterial = new Material(terrainShader);
+            meshRenderer.sharedMaterials = AddMaterial(meshRenderer.sharedMaterials, this.terrainMaterial);
+        }
+        if(grassShader != null){
+            this.grassMaterial = new Material(grassShader);
+            meshRenderer.sharedMaterials = AddMaterial(meshRenderer.sharedMaterials, this.grassMaterial);
         }
     }
 

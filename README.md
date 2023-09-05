@@ -8,3 +8,5 @@
 - https://iquilezles.org/articles/fbm/
 - https://roystan.net/articles/toon-water/
 - https://roystan.net/articles/grass-shader/
+- https://danielilett.com/2021-08-24-tut5-17-stylised-grass/
+- https://catlikecoding.com/unity/tutorials/advanced-rendering/tessellation/
